@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head> 
+    <link rel="stylesheet" href="qsld_web.css">
+     <meta charset="UTF-8">
+     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+     <meta http-equiv="X-UA-Compatible" content="ie=edge">
+     <title>QSLD Playground</title>
+</head>
+<body>
+<div id="top-bar" class="bar-top">
+    <button id="run-btn" class="btn-run"></button>
+    <label id="vim-mode-label" for="vim-mode">vim mode: </label>
+    <select name="vim-mode" id="vim-mode-select" class="select-vim-mode">
+        <option id="vim-on-opt" value="on" selected>on</option>
+        <option id="vim-off-opt" value="off">off</option>
+    </select>
+</div>
+<div id="editor">// This is the QSLD quantum simulation library playground.
+// You can do anything that you want because it is being run 
+// through a docker container which is temporary and will work as normal.
+// Vim mode is the default in the editor, you can deactivate it through the selection menu
+// in the top bar.
+
+import std.stdio;
+// Import QSLD stuff here
+
+void main() {
+    writeln("Hello, World!");
+}</div>
+<div id="output-box" class="box-output"></div>
+<script src="ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
+<script src="qsld_web.js" type="text/javascript" charset="utf-8"></script>
+</body>
+</html>
