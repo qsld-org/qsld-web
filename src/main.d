@@ -29,6 +29,7 @@ void main() {
         "GET /_ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
     string response_body1 = get_and_parse_response(result1[0], result1[1], result1[2]);
     writeln(response_body1);
+
     auto router = new URLRouter;
     router.get("/ws", handleWebSockets(&handleConn));
 
