@@ -20,15 +20,12 @@ void handleConn(scope WebSocket sock) {
 
 void main() {
     Socket docker_socket = docker_socket_connect();
-    Tuple!(string, char[], long) result = docker_socket_send_request(docker_socket,
-        "GET /_ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
-    string response_body = get_and_parse_response(result[0], result[1], result[2]);
-    writeln(response_body);
 
-    Tuple!(string, char[], long) result1 = docker_socket_send_request(docker_socket,
-        "GET /_ping HTTP/1.1\r\nHost: localhost\r\n\r\n");
-    string response_body1 = get_and_parse_response(result1[0], result1[1], result1[2]);
-    writeln(response_body1);
+    string id = docker_container_create(docker_socket, "testuserid");
+    docker_container_start(docker_socket, id);
+    docker_container_exec(docker_socket, id, "ls -la /sandbox");
+    docker_container_stop(docker_socket, id);
+    docker_container_remove(docker_socket, id);
 
     auto router = new URLRouter;
     router.get("/ws", handleWebSockets(&handleConn));

@@ -33,7 +33,7 @@ RUN  cd ./qsld && \
     mv ./qsld /usr/local/include/
 
 # install extra dependencies
-RUN apt-get update && apt-get install -y vim neovim texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra tex-common zathura
+RUN apt-get update && apt-get install -y vim neovim texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra tex-common bash
 
 # install quantikz
 RUN wget https://mirrors.ctan.org/graphics/pgf/contrib/quantikz/quantikz.sty && \
