@@ -1,22 +1,33 @@
-    if (localStorage.getItem("userId") === null) {
-        var random_nums = window.crypto.getRandomValues(new Uint8Array(16));    
-        var str = ""; 
+    const socket = new WebSocket("ws://localhost:8080/ws");
 
-        for (let i = 0; i < random_nums.length; i++) { 
-            str = str.concat(String.fromCharCode(random_nums[i])); 
-        } 
+    socket.addEventListener("open", function() {
+        if (localStorage.getItem("userId") === null) {
+            var random_nums = window.crypto.getRandomValues(new Uint8Array(16));    
+            var str = ""; 
 
-        var encoded = btoa(str); 
-        encoded = encoded.replaceAll("/", "_");
-        encoded = encoded.replaceAll("+", "-");
-        encoded = encoded.replaceAll("=", "");
+            for (let i = 0; i < random_nums.length; i++) { 
+                str = str.concat(String.fromCharCode(random_nums[i])); 
+            } 
 
-        window.history.replaceState(null, "", "?userid=" + encoded);
-        localStorage.setItem("userId", encoded);
-    } else {
-        var user_id = localStorage.getItem("userId");
-        window.history.replaceState(null, "", "?userid=" + user_id);
-    }
+            var encoded = btoa(str); 
+            encoded = encoded.replaceAll("/", "_");
+            encoded = encoded.replaceAll("+", "-");
+            encoded = encoded.replaceAll("=", "");
+
+            window.history.replaceState(null, "", "?userid=" + encoded);
+            localStorage.setItem("userId", encoded);
+
+            var user_id = localStorage.getItem("userId");
+            const identification_json = JSON.stringify({ userId: user_id });
+            socket.send(identification_json);
+        } else {
+            var user_id = localStorage.getItem("userId");
+            window.history.replaceState(null, "", "?userid=" + user_id);
+
+            const identification_json = JSON.stringify({ userId: user_id });
+            socket.send(identification_json);
+        }
+    });
 
     function debounce(func, delay) {
         let timeout; 
@@ -28,7 +39,6 @@
         };
     }
 
-    const socket = new WebSocket("ws://localhost:8080/ws");
 
     var editor = ace.edit("editor");
     document.getElementById("editor").style.fontSize='15px';
@@ -93,7 +103,8 @@
     });
 
     run_btn.addEventListener('click', function() {
-        socket.send(editor.getValue());
+        const request_json = JSON.stringify({ userId: localStorage.getItem("userId"), content: editor.getValue() });
+        socket.send(request_json);
     });
 
     var vim_mode_label = document.getElementById("vim-mode-label");
