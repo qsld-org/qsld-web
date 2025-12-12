@@ -9,8 +9,9 @@ import std.array;
 import std.socket;
 import std.format;
 import std.json;
+import std.datetime;
 
-import std.conv : to;
+import std.conv : to, parse;
 import std.typecons : Tuple, tuple;
 import std.string;
 import std.algorithm.searching : canFind;
@@ -21,6 +22,7 @@ Socket docker_socket_connect() {
     string docker_socket_path = "/var/run/docker.sock";
     auto docker_socket_addr = new UnixAddress(docker_socket_path);
     try {
+        docker_socket.setOption(SocketOptionLevel.SOCKET, SocketOption.RCVTIMEO, dur!("seconds")(2));
         docker_socket.connect(docker_socket_addr);
         return docker_socket;
     } catch (SocketOSException e) {
@@ -39,17 +41,59 @@ Tuple!(string, char[], long) docker_socket_send_request(Socket docker_socket, st
         }
         sent += n;
     }
+
     char[4096] buffer;
-    auto n = docker_socket.receive(buffer);
-    string response = cast(string) buffer[0 .. n];
-    return tuple(response, buffer[0 .. n], n);
+    char[] full_buffer;
+
+    long n;
+    while (true) {
+        n = docker_socket.receive(buffer);
+        if (n <= 0) {
+            break;
+        }
+
+        full_buffer ~= buffer[0 .. n];
+
+        if (full_buffer.length >= 5 && full_buffer[$ - 5 .. $] == "\r\n0\r\n\r\n") {
+            break;
+        }
+    }
+    string response = cast(string) full_buffer;
+    return tuple(response, full_buffer, cast(long) full_buffer.length);
 }
 
 string get_and_parse_response(string response, char[] buffer, long n) {
     string[] result = cast(string[]) response.split("\r\n");
     string response_body;
+
     for (int i = 0; i < result.length; i++) {
-        if (result[i].canFind("Content-Length")) {
+        if (result[i].startsWith("Transfer-Encoding") && result[i].canFind("chunked")) {
+            auto headerEnd = response.indexOf("\r\n\r\n");
+            if (headerEnd < 0)
+                return "";
+
+            string chunkData = response[headerEnd + 4 .. $];
+
+            ulong idx = 0;
+            while (idx < chunkData.length) {
+                auto lineEnd = chunkData.indexOf("\r\n", idx);
+                if (lineEnd < 0)
+                    break;
+
+                string hexSize = chunkData[idx .. lineEnd];
+                int size = parse!int(hexSize, 16);
+
+                if (size == 0)
+                    break;
+
+                idx = lineEnd + 2;
+                response_body ~= chunkData[idx .. idx + size];
+
+                idx += size + 2;
+            }
+        }
+
+        if (result[i].startsWith("Content-Length")) {
             string[] result_parts = result[i].split(":");
             int content_length = to!int(strip(result_parts[1]));
             response_body = cast(string) buffer[(n - content_length) .. n];
@@ -141,7 +185,8 @@ void docker_container_exec(Socket docker_socket, string container_id, string com
 
     ulong exec_start_body_length = exec_start_request_body.length;
     string exec_start_request = format("POST /exec/%s/start HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n%s", exec_id, exec_start_body_length, exec_start_request_body);
-    Tuple!(string, char[], long) response = docker_socket_send_request(docker_socket, exec_start_request);
+    Tuple!(string, char[], long) response = docker_socket_send_request(
+        docker_socket, exec_start_request);
     string response_body = get_and_parse_response(response[0], response[1], response[2]);
     if (response_body.canFind("message")) {
         JSONValue json = parseJSON(response_body);
@@ -169,4 +214,17 @@ void docker_container_remove(Socket docker_socket, string container_id) {
         JSONValue json = parseJSON(response_body);
         writeln(json["message"].str());
     }
+}
+
+bool docker_container_is_started(Socket docker_socket, string container_id) {
+    ulong body_length = 0;
+    string request = format("GET /containers/%s/json HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n", container_id, body_length);
+    Tuple!(string, char[], long) response = docker_socket_send_request(docker_socket, request);
+    string response_body = get_and_parse_response(response[0], response[1], response[2]);
+    JSONValue json = parseJSON(response_body);
+    string status = json["State"]["Status"].str();
+    if (status != "running") {
+        return false;
+    }
+    return true;
 }

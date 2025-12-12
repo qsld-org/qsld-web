@@ -41,6 +41,11 @@ void handleConn(scope WebSocket sock) {
         users_containers[user_id] = docker_container_create(users_sockets[user_id], user_id);
     }
 
+    bool is_started = docker_container_is_started(users_sockets[user_id], users_containers[user_id]);
+    if (!is_started) {
+        docker_container_start(users_sockets[user_id], users_containers[user_id]);
+    }
+
     while (sock.waitForData()) {
         auto msg = sock.receiveText();
         JSONValue json = parseJSON(msg);
@@ -50,6 +55,12 @@ void handleConn(scope WebSocket sock) {
     cleanup_tasks[user_id] = runTask({
         try {
             sleep(dur!("seconds")(7));
+            // stop the users container if it is started
+            bool started = docker_container_is_started(users_sockets[user_id], users_containers[user_id]);
+            if (started) {
+                docker_container_stop(users_sockets[user_id], users_containers[user_id]);
+            }
+
             // cleanup user temporary container
             docker_container_remove(users_sockets[user_id], users_containers[user_id]);
             users_containers.remove(user_id);
