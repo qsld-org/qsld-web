@@ -29,6 +29,11 @@
         }
     });
 
+    socket.addEventListener("message", function(event) {
+        var output_box = document.getElementById("output-box");
+        output_box.innerHTML = event.data;
+    });
+
     function debounce(func, delay) {
         let timeout; 
         return function (...args) {
@@ -38,7 +43,6 @@
             }, delay);
         };
     }
-
 
     var editor = ace.edit("editor");
     document.getElementById("editor").style.fontSize='15px';

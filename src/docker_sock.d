@@ -228,3 +228,15 @@ bool docker_container_is_started(Socket docker_socket, string container_id) {
     }
     return true;
 }
+
+bool docker_container_exists(Socket docker_socket, string container_id) {
+    ulong body_length = 0;
+    string request = format("GET /containers/%s/json HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n", container_id, body_length);
+    Tuple!(string, char[], long) response = docker_socket_send_request(docker_socket, request);
+    string response_body = get_and_parse_response(response[0], response[1], response[2]);
+    if (response_body.canFind("message")) {
+        return false;
+    }
+
+    return true;
+}
