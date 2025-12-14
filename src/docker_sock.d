@@ -9,11 +9,12 @@ import std.array;
 import std.socket;
 import std.format;
 import std.json;
+import std.conv;
 import std.datetime;
-
-import std.conv : to, parse;
-import std.typecons : Tuple, tuple;
 import std.string;
+import std.process;
+
+import std.typecons : Tuple, tuple;
 import std.algorithm.searching : canFind;
 import core.stdc.stdlib : exit;
 
@@ -104,6 +105,12 @@ string get_and_parse_response(string response, char[] buffer, long n) {
 }
 
 string docker_container_create(Socket docker_socket, string user_id) {
+    string memory_allocated = environment.get("QSLD_WEB_CONTAINERS_MEMORY", "1.5");
+    string cpus = environment.get("QSLD_WEB_CONTAINERS_CPUS", "1");
+
+    int memory_amt = cast(int)(to!float(memory_allocated) * 1_000_000_000);
+    int cpu_amt = cast(int)(to!float(cpus) * 1_000_000_000);
+
     string request_body = format(`
     {
         "Image": "qsld_web:latest",
@@ -111,14 +118,18 @@ string docker_container_create(Socket docker_socket, string user_id) {
             "Binds": [
                 "/tmp/qsld_web/%s:/sandbox:rw"
             ],
-            "Memory": 1500000000,
-            "MemorySwap": 1500000000,
-            "NanoCPUs": 1000000000
+            "Memory": %d,
+            "MemorySwap": %d,
+            "NanoCPUs": %d
+        },
+        "Labels": {
+            "managed_by": "qsld_web"
         },
         "Tty": true,
         "OpenStdin": true
-    }
-    `, user_id);
+    }`, user_id, memory_amt, memory_amt, cpu_amt);
+
+    writeln(request_body);
 
     ulong body_length = request_body.length;
     string request = format("POST /containers/create HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n%s", body_length, request_body);
