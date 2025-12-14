@@ -32,7 +32,7 @@ string prettify_output(string output) {
         output_lines[i] = "<p style='color: #c0caf5; font-size: 18px'>" ~ line ~ "</p>";
     }
 
-    return output_lines.join("\n");
+    return output_lines.join("");
 }
 
 void cleanup(string user_id) {
@@ -100,7 +100,16 @@ void handleConn(scope WebSocket sock) {
         if (getSize(output_file_path) != 0) {
             string output = cast(string) read(output_file_path);
             output = prettify_output(output);
-            writeln(output);
+            sock.send(output);
+            continue;
+        }
+
+        // Run the users program and send output to frontend
+        string run_cmd = "/sandbox/main";
+        docker_container_exec(users_sockets[user_id], users_containers[user_id], run_cmd);
+        if (getSize(output_file_path) != 0) {
+            string output = cast(string) read(output_file_path);
+            output = prettify_output(output);
             sock.send(output);
         }
     }
