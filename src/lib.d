@@ -6,9 +6,19 @@ import std.socket;
 
 import std.algorithm : remove;
 
+import vibe.vibe;
+
 import docker_sock;
 
-import vibe.vibe;
+struct UserSession {
+    bool connected;
+    bool running;
+
+    this(bool connected, bool running) {
+        this.connected = connected;
+        this.running = running;
+    }
+}
 
 // map from user id to cleanup task handle
 __gshared Task[string] cleanup_tasks;
@@ -16,8 +26,11 @@ __gshared Task[string] cleanup_tasks;
 // map from user id to container id
 __gshared string[string] users_containers;
 
-// map from user id to socket connection handle
-__gshared Socket[string] users_sockets;
+// map from user id to docker socket connection handle
+__gshared Socket[string] users_docker_sockets;
+
+// map from the user id to the users session
+__gshared UserSession[string] user_sessions;
 
 string get_user_id(WebSocket sock) {
     auto ident_msg = sock.receiveText();
@@ -31,13 +44,13 @@ void cleanup(string user_id) {
             sleep(dur!("seconds")(7));
 
             // stop the users container if it is started
-            bool started = docker_container_is_started(users_sockets[user_id], users_containers[user_id]);
+            bool started = docker_container_is_started(users_docker_sockets[user_id], users_containers[user_id]);
             if (started) {
-                docker_container_stop(users_sockets[user_id], users_containers[user_id]);
+                docker_container_stop(users_docker_sockets[user_id], users_containers[user_id]);
             }
 
             // cleanup user temporary container
-            docker_container_remove(users_sockets[user_id], users_containers[user_id]);
+            docker_container_remove(users_docker_sockets[user_id], users_containers[user_id]);
             users_containers.remove(user_id);
 
             // cleanup user directory
@@ -46,8 +59,9 @@ void cleanup(string user_id) {
                 rmdirRecurse(user_tmp_dir);
             }
 
-            // cleanup user docker socket connection
-            users_sockets.remove(user_id);
+            // cleanup the connection states
+            users_docker_sockets.remove(user_id);
+            user_sessions.remove(user_id);
             writeln(format("User with user_id: %s closed connection", user_id));
         } catch (Exception e) {
         }

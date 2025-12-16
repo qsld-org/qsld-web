@@ -13,6 +13,7 @@ import std.conv;
 import std.datetime;
 import std.string;
 import std.process;
+import std.uri;
 
 import std.typecons : Tuple, tuple;
 import std.algorithm.searching : canFind;
@@ -129,8 +130,6 @@ string docker_container_create(Socket docker_socket, string user_id) {
         "OpenStdin": true
     }`, user_id, memory_amt, memory_amt, cpu_amt);
 
-    writeln(request_body);
-
     ulong body_length = request_body.length;
     string request = format("POST /containers/create HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n%s", body_length, request_body);
 
@@ -216,9 +215,9 @@ void docker_container_stop(Socket docker_socket, string container_id) {
     }
 }
 
-void docker_container_remove(Socket docker_socket, string container_id) {
+void docker_container_remove(Socket docker_socket, string container_id, bool force = false) {
     ulong body_length = 0;
-    string request = format("DELETE /containers/%s HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n", container_id, body_length);
+    string request = format("DELETE /containers/%s%s HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n", container_id, force ? "?force=true" : "", body_length);
     Tuple!(string, char[], long) response = docker_socket_send_request(docker_socket, request);
     string response_body = get_and_parse_response(response[0], response[1], response[2]);
     if (response_body.canFind("message")) {
@@ -250,4 +249,29 @@ bool docker_container_exists(Socket docker_socket, string container_id) {
     }
 
     return true;
+}
+
+string[] docker_container_list_with_label(Socket docker_socket, string label) {
+    string[] results;
+    ulong body_length = 0;
+
+    string request_filter = encodeComponent(format(`{"label": ["%s"]}`, label));
+    string request = format("GET /containers/json?filters=%s HTTP/1.1\r\nHost: docker\r\nContent-Type: application/json\r\nContent-Length: %u\r\n\r\n", request_filter, body_length);
+    Tuple!(string, char[], long) response = docker_socket_send_request(docker_socket, request);
+    string response_body = get_and_parse_response(response[0], response[1], response[2]);
+
+    JSONValue json = parseJSON(response_body);
+    if (json.type() == JSONType.ARRAY) {
+        JSONValue[] containers = json.array();
+        foreach (container; containers) {
+            results ~= container["Id"].str();
+        }
+    } else {
+        if (response_body.canFind("message")) {
+            writeln(json["message"].str());
+        }
+        return [];
+    }
+
+    return results;
 }

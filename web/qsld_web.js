@@ -1,6 +1,7 @@
-    const socket = new WebSocket("ws://localhost:8080/ws");
+    const code_socket = new WebSocket("ws://localhost:8080/ws");
 
-    socket.addEventListener("open", function() {
+    function identify_user() {
+        var identification_json;
         if (localStorage.getItem("userId") === null) {
             var random_nums = window.crypto.getRandomValues(new Uint8Array(16));    
             var str = ""; 
@@ -18,19 +19,25 @@
             localStorage.setItem("userId", encoded);
 
             var user_id = localStorage.getItem("userId");
-            const identification_json = JSON.stringify({ userId: user_id });
-            socket.send(identification_json);
+            identification_json = JSON.stringify({ userId: user_id });
         } else {
             var user_id = localStorage.getItem("userId");
             window.history.replaceState(null, "", "?userid=" + user_id);
 
-            const identification_json = JSON.stringify({ userId: user_id });
-            socket.send(identification_json);
+            identification_json = JSON.stringify({ userId: user_id });
         }
+
+        return identification_json;
+    }
+
+    var identification_json = identify_user();
+    code_socket.addEventListener("open", function() {
+        code_socket.send(identification_json);
     });
 
-    socket.addEventListener("message", function(event) {
+    code_socket.addEventListener("message", function(event) {
         var output_box = document.getElementById("output-box");
+        console.log(event.data);
         output_box.innerHTML = event.data;
     });
 
@@ -108,7 +115,7 @@
 
     run_btn.addEventListener('click', function() {
         const request_json = JSON.stringify({ userId: localStorage.getItem("userId"), content: editor.getValue() });
-        socket.send(request_json);
+        code_socket.send(request_json);
     });
 
     var vim_mode_label = document.getElementById("vim-mode-label");
