@@ -1,7 +1,7 @@
-FROM ubuntu:latest
+FROM ubuntu:25.10
 
 # update the system 
-RUN apt-get update && apt-get upgrade
+RUN apt-get update -y && apt-get upgrade -y
 
 # install dmd
 RUN apt-get install -y wget gnupg && \
@@ -33,7 +33,7 @@ RUN  cd ./qsld && \
     mv ./qsld /usr/local/include/
 
 # install extra dependencies
-RUN apt-get update && apt-get install -y vim neovim texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra tex-common bash
+RUN apt-get update -y && apt-get install -y vim neovim texlive-latex-base texlive-fonts-recommended texlive-fonts-extra texlive-latex-extra tex-common bash imagemagick
 
 # install quantikz
 RUN wget https://mirrors.ctan.org/graphics/pgf/contrib/quantikz/quantikz.sty && \
@@ -41,7 +41,13 @@ RUN wget https://mirrors.ctan.org/graphics/pgf/contrib/quantikz/quantikz.sty && 
     mv ./quantikz.sty /usr/local/share/texmf/tex/latex/quantikz/ && \
     mktexlsr
 
-
+# install blochsphere visualization package
+RUN mkdir -p /usr/local/share/texmf/tex/latex/blochsphere/ && \
+    git clone https://github.com/matthewwardrop/latex-blochsphere.git && \
+    cd latex-blochsphere && \
+    pdflatex blochsphere.ins && \
+    mv ./blochsphere.sty /usr/local/share/texmf/tex/latex/blochsphere/ && \
+    mktexlsr
 
 
 
