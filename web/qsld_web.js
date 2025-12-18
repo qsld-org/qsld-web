@@ -1,5 +1,6 @@
     const code_socket = new WebSocket("ws://localhost:8080/ws");
 
+    // creates the user id to identify the user
     function identify_user() {
         var identification_json;
         if (localStorage.getItem("userId") === null) {
@@ -30,17 +31,25 @@
         return identification_json;
     }
 
+    // sends the user id to the backend 
     var identification_json = identify_user();
     code_socket.addEventListener("open", function() {
         code_socket.send(identification_json);
     });
 
+    // recieves and parses the messages from the backend
     code_socket.addEventListener("message", function(event) {
         var output_box = document.getElementById("output-box");
-        console.log(event.data);
-        output_box.innerHTML = event.data;
+        const json_obj = JSON.parse(event.data);
+
+        if (json_obj.contentType === "output") {
+            output_box.innerHTML = json_obj.output;
+        } else if (json_obj.contentType === "message") {
+            output_box.innerHTML = json_obj.message;
+        } // TODO: Image message processing and display
     });
 
+    // delays actions for some amount of time
     function debounce(func, delay) {
         let timeout; 
         return function (...args) {

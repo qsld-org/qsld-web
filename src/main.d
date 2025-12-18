@@ -19,6 +19,56 @@ import vibe.vibe;
 
 bool cleanup_flag = false;
 
+void send_running_msg(WebSocket sock) {
+    string system_output = prettify_output("Running...please wait");
+    string system_output_json = format(`
+    {
+        "contentType": "message",
+        "message": "%s"
+    }`, system_output);
+    sock.send(system_output_json);
+}
+
+void parse_and_write_user_request(string request, string code_file_path) {
+    JSONValue json = parseJSON(request);
+    string code = json["content"].str();
+    write(code_file_path, code);
+}
+
+bool compile_user_code(WebSocket sock, string user_id, string output_file_path) {
+    bool compiler_failed = false;
+    string compile_cmd = "dmd -of=/sandbox/main -I/usr/local/include/qsld -L-L/usr/local/lib -L='-lqsld' /sandbox/main.d";
+    docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], compile_cmd);
+    if (getSize(output_file_path) != 0) {
+        string output = cast(string) read(output_file_path);
+        output = prettify_output(output);
+        string request_json = format(`
+        {
+            "contentType": "output", 
+            "output": "%s"
+        }`, output);
+        sock.send(request_json);
+        compiler_failed = true;
+    }
+
+    return compiler_failed;
+}
+
+void run_user_program(WebSocket sock, string user_id, string output_file_path) {
+    string run_cmd = "/sandbox/main";
+    docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], run_cmd);
+    if (getSize(output_file_path) != 0) {
+        string output = cast(string) read(output_file_path);
+        output = prettify_output(output);
+        string request_json = format(`
+        {
+            "contentType": "output", 
+            "output": "%s"
+        }`, output);
+        sock.send(request_json);
+    }
+}
+
 void handleConn(scope WebSocket sock) {
     string user_id = get_user_id(sock);
     handleConn_impl(sock, user_id);
@@ -53,41 +103,24 @@ void handleConn_impl(WebSocket sock, string user_id) {
     while (sock.waitForData()) {
         // Recieve the users code
         auto msg = sock.receiveText();
-
         auto msg_copy = msg;
-        string system_output = prettify_output("Running...please wait");
-        sock.send(system_output);
+
+        send_running_msg(sock);
         runTask({
             try {
                 user_sessions[user_id].running = true;
 
                 // Parse the request with the users code
-                JSONValue json = parseJSON(msg_copy);
-                string code = json["content"].str();
                 string code_file_path = format("/tmp/qsld_web/%s/main.d", user_id);
-                write(code_file_path, code);
+                parse_and_write_user_request(msg_copy, code_file_path);
 
                 // Compile the file with the users code
-                bool compiler_failed = false;
-                string compile_cmd = "dmd -of=/sandbox/main -I/usr/local/include/qsld -L-L/usr/local/lib -L='-lqsld' /sandbox/main.d";
-                docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], compile_cmd);
                 string output_file_path = format("/tmp/qsld_web/%s/output.txt", user_id);
-                if (getSize(output_file_path) != 0) {
-                    string output = cast(string) read(output_file_path);
-                    output = prettify_output(output);
-                    sock.send(output);
-                    compiler_failed = true;
-                }
+                bool compiler_failed = compile_user_code(sock, user_id, output_file_path);
 
                 // Run the users program and send output to frontend
                 if (!compiler_failed) {
-                    string run_cmd = "/sandbox/main";
-                    docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], run_cmd);
-                    if (getSize(output_file_path) != 0) {
-                        string output = cast(string) read(output_file_path);
-                        output = prettify_output(output);
-                        sock.send(output);
-                    }
+                    run_user_program(sock, user_id, output_file_path);
                 }
 
                 user_sessions[user_id].running = false;
