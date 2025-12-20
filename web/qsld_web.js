@@ -1,4 +1,5 @@
-    const code_socket = new WebSocket("ws://localhost:8080/ws");
+    const server = "localhost:8080";
+    const code_socket = new WebSocket(`ws://${server}/ws`);
 
     // creates the user id to identify the user
     function identify_user() {
@@ -38,15 +39,39 @@
     });
 
     // recieves and parses the messages from the backend
-    code_socket.addEventListener("message", function(event) {
+    code_socket.addEventListener("message", async function(event) {
         var output_box = document.getElementById("output-box");
         const json_obj = JSON.parse(event.data);
 
         if (json_obj.contentType === "output") {
-            output_box.innerHTML = json_obj.output;
+            output_box.innerHTML += json_obj.output;
         } else if (json_obj.contentType === "message") {
-            output_box.innerHTML = json_obj.message;
-        } // TODO: Image message processing and display
+            output_box.innerHTML += json_obj.message;
+        } else if (json_obj.contentType === "images") {
+            const images = json_obj.images;
+            const user_id = localStorage.getItem("userId");
+            for (let i = 0; i < images.length; i++) {
+                var image_url = `http://${server}/artifact/${user_id}/${images[i]}`;
+                const resp = await fetch(image_url);
+                const blob = await resp.blob();
+                const blob_url = URL.createObjectURL(blob);
+
+                const image_elem = document.createElement("img");
+                image_elem.id = "image";
+                image_elem.src = blob_url;
+
+                const image_dl_elem = document.createElement("a");
+                image_dl_elem.id = "image-download";
+                image_dl_elem.href = blob_url;
+                image_dl_elem.download = images[i];
+                image_dl_elem.style.marginTop = "6px";
+                image_dl_elem.style.marginBottom = "6px";
+                image_dl_elem.textContent = "Download";
+
+                output_box.appendChild(image_elem);
+                output_box.appendChild(image_dl_elem);
+            }
+        }
     });
 
     // delays actions for some amount of time

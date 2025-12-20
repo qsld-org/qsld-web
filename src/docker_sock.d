@@ -127,7 +127,8 @@ string docker_container_create(Socket docker_socket, string user_id) {
             "managed_by": "qsld_web"
         },
         "Tty": true,
-        "OpenStdin": true
+        "OpenStdin": true,
+        "WorkingDir": "/sandbox"
     }`, user_id, memory_amt, memory_amt, cpu_amt);
 
     ulong body_length = request_body.length;

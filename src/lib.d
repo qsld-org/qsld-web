@@ -1,10 +1,11 @@
 import std.stdio;
 import std.format;
-import std.file : write, exists, mkdir, rmdirRecurse, read, getSize;
+import std.file : write, exists, mkdir, rmdirRecurse, read, getSize, dirEntries, SpanMode;
 import std.json;
 import std.socket;
+import std.array;
 
-import std.algorithm : remove;
+import std.algorithm : remove, filter, map;
 
 import vibe.vibe;
 
@@ -31,6 +32,80 @@ __gshared Socket[string] users_docker_sockets;
 
 // map from the user id to the users session
 __gshared UserSession[string] user_sessions;
+
+// the origin of the frontend to allow it through CORS
+__gshared string frontend_origin;
+
+void send_running_msg(WebSocket sock) {
+    string system_output = prettify_output("Running...please wait");
+    string system_output_json = format(`
+    {
+        "contentType": "message",
+        "message": "%s"
+    }`, system_output);
+    sock.send(system_output_json);
+}
+
+void parse_and_write_user_request(string request, string code_file_path) {
+    JSONValue json = parseJSON(request);
+    string code = json["content"].str();
+    write(code_file_path, code);
+}
+
+bool compile_user_code(WebSocket sock, string user_id, string output_file_path) {
+    bool compiler_failed = false;
+    string compile_cmd = "dmd -of=/sandbox/main -I/usr/local/include/qsld -L-L/usr/local/lib -L='-lqsld' /sandbox/main.d";
+    docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], compile_cmd);
+    if (getSize(output_file_path) != 0) {
+        string output = cast(string) read(output_file_path);
+        output = prettify_output(output);
+        string request_json = format(`
+        {
+            "contentType": "output", 
+            "output": "%s"
+        }`, output);
+        sock.send(request_json);
+        compiler_failed = true;
+    }
+
+    return compiler_failed;
+}
+
+void run_user_program(WebSocket sock, string user_id, string output_file_path) {
+    string run_cmd = "/sandbox/main";
+    docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], run_cmd);
+    if (getSize(output_file_path) != 0) {
+        string output = cast(string) read(output_file_path);
+        output = prettify_output(output);
+        string request_json = format(`
+        {
+            "contentType": "output", 
+            "output": "%s"
+        }`, output);
+        sock.send(request_json);
+    }
+}
+
+void notify_about_images(WebSocket sock, string user_id) {
+    string[] images = dirEntries(format("/tmp/qsld_web/%s", user_id), SpanMode.shallow, false)
+        .map!(f => f.name)
+        .array
+        .filter!(f => f.endsWith(".png"))
+        .array
+        .map!(f => f.split("/")[$ - 1])
+        .array;
+
+    if (images.length > 0) {
+        string notification_json = format(`
+        {
+            "contentType": "images",
+            "images": %s 
+        }
+        `, images);
+
+        sock.send(notification_json);
+    }
+}
 
 string get_user_id(WebSocket sock) {
     auto ident_msg = sock.receiveText();

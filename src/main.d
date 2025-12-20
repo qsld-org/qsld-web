@@ -8,10 +8,13 @@ import std.stdio : writeln;
 import std.socket;
 import std.json;
 import std.getopt;
+import std.algorithm : filter, map, canFind;
+import std.process;
+import std.array;
 
 import core.stdc.stdlib : exit;
 
-import std.file : write, exists, mkdir, isDir, remove, rmdirRecurse, read, getSize;
+import std.file : write, exists, mkdir, isDir, remove, rmdirRecurse, read, getSize, dirEntries, SpanMode;
 
 import docker_sock;
 import lib;
@@ -19,54 +22,32 @@ import vibe.vibe;
 
 bool cleanup_flag = false;
 
-void send_running_msg(WebSocket sock) {
-    string system_output = prettify_output("Running...please wait");
-    string system_output_json = format(`
-    {
-        "contentType": "message",
-        "message": "%s"
-    }`, system_output);
-    sock.send(system_output_json);
-}
+void get_and_send_image_file(HTTPServerRequest req, HTTPServerResponse res) {
+    enforceHTTP("userid" in req.params, HTTPStatus.badRequest, "Missing user id in request");
+    enforceHTTP("file" in req.params, HTTPStatus.badRequest, "Missing image file name in request");
 
-void parse_and_write_user_request(string request, string code_file_path) {
-    JSONValue json = parseJSON(request);
-    string code = json["content"].str();
-    write(code_file_path, code);
-}
+    string user_id = req.params["userid"];
+    string filename = req.params["file"];
 
-bool compile_user_code(WebSocket sock, string user_id, string output_file_path) {
-    bool compiler_failed = false;
-    string compile_cmd = "dmd -of=/sandbox/main -I/usr/local/include/qsld -L-L/usr/local/lib -L='-lqsld' /sandbox/main.d";
-    docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], compile_cmd);
-    if (getSize(output_file_path) != 0) {
-        string output = cast(string) read(output_file_path);
-        output = prettify_output(output);
-        string request_json = format(`
-        {
-            "contentType": "output", 
-            "output": "%s"
-        }`, output);
-        sock.send(request_json);
-        compiler_failed = true;
+    enforceHTTP(user_id in user_sessions, HTTPStatus.badRequest, "the user id does not exist");
+    enforceHTTP(!filename.canFind("..") && !filename.canFind("/"), HTTPStatus.badRequest, "filename should not be a path or is invalid");
+
+    string image_file_path = format("/tmp/qsld_web/%s/%s", user_id, filename);
+    if (!exists(image_file_path)) {
+        enforceHTTP(false, HTTPStatus.badRequest, "the image file does not exist");
     }
 
-    return compiler_failed;
-}
-
-void run_user_program(WebSocket sock, string user_id, string output_file_path) {
-    string run_cmd = "/sandbox/main";
-    docker_container_exec(users_docker_sockets[user_id], users_containers[user_id], run_cmd);
-    if (getSize(output_file_path) != 0) {
-        string output = cast(string) read(output_file_path);
-        output = prettify_output(output);
-        string request_json = format(`
-        {
-            "contentType": "output", 
-            "output": "%s"
-        }`, output);
-        sock.send(request_json);
+    FileStream file_stream = openFile(image_file_path, FileMode.read);
+    scope (exit) {
+        file_stream.close();
     }
+
+    frontend_origin = environment.get("QSLD_WEB_FRONTEND_ORIGIN", "http://localhost:8000");
+
+    res.contentType = "image/png";
+    res.headers["Access-Control-Allow-Origin"] = frontend_origin;
+
+    res.writeRawBody(file_stream);
 }
 
 void handleConn(scope WebSocket sock) {
@@ -80,7 +61,6 @@ void handleConn_impl(WebSocket sock, string user_id) {
     }
 
     create_user_tmp_dir(user_id);
-
     if (user_id in cleanup_tasks) {
         cleanup_tasks[user_id].interrupt();
         cleanup_tasks.remove(user_id);
@@ -92,10 +72,12 @@ void handleConn_impl(WebSocket sock, string user_id) {
 
     if (!(user_id in users_containers) || !docker_container_exists(
             users_docker_sockets[user_id], users_containers[user_id])) {
-        users_containers[user_id] = docker_container_create(users_docker_sockets[user_id], user_id);
+        users_containers[user_id] = docker_container_create(
+            users_docker_sockets[user_id], user_id);
     }
 
-    bool is_started = docker_container_is_started(users_docker_sockets[user_id], users_containers[user_id]);
+    bool is_started = docker_container_is_started(
+        users_docker_sockets[user_id], users_containers[user_id]);
     if (!is_started) {
         docker_container_start(users_docker_sockets[user_id], users_containers[user_id]);
     }
@@ -104,11 +86,22 @@ void handleConn_impl(WebSocket sock, string user_id) {
         // Recieve the users code
         auto msg = sock.receiveText();
         auto msg_copy = msg;
-
         send_running_msg(sock);
         runTask({
             try {
                 user_sessions[user_id].running = true;
+
+                string[] images = dirEntries(format("/tmp/qsld_web/%s", user_id), SpanMode.shallow, false)
+                    .map!(f => f.name)
+                    .array
+                    .filter!(f => f.endsWith(".png"))
+                    .array;
+
+                if (images.length > 0) {
+                    foreach (name; images) {
+                        remove(name);
+                    }
+                }
 
                 // Parse the request with the users code
                 string code_file_path = format("/tmp/qsld_web/%s/main.d", user_id);
@@ -121,6 +114,7 @@ void handleConn_impl(WebSocket sock, string user_id) {
                 // Run the users program and send output to frontend
                 if (!compiler_failed) {
                     run_user_program(sock, user_id, output_file_path);
+                    notify_about_images(sock, user_id);
                 }
 
                 user_sessions[user_id].running = false;
@@ -133,7 +127,8 @@ void handleConn_impl(WebSocket sock, string user_id) {
     }
 
     user_sessions[user_id].connected = false;
-    if (!user_sessions[user_id].connected && !user_sessions[user_id].running) {
+    if (!user_sessions[user_id].connected && !user_sessions[user_id]
+        .running) {
         cleanup(user_id);
     }
 }
@@ -148,7 +143,9 @@ void serve() {
     }
 
     auto router = new URLRouter;
-    router.get("/ws", handleWebSockets(&handleConn));
+    router
+        .get("/ws", handleWebSockets(&handleConn))
+        .get("/artifact/:userid/:file", &get_and_send_image_file);
 
     listenHTTP("127.0.0.1:8080", router);
     runApplication();
@@ -156,7 +153,8 @@ void serve() {
 
 void cleanup_cmd() {
     Socket docker_socket = docker_socket_connect();
-    string[] container_ids = docker_container_list_with_label(docker_socket, "managed_by=qsld_web");
+    string[] container_ids = docker_container_list_with_label(
+        docker_socket, "managed_by=qsld_web");
     if (container_ids.length == 0) {
         writeln("No containers to cleanup!");
         exit(0);

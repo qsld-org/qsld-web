@@ -2,4 +2,22 @@ body {
     background-color: #1a1b26;
 }
 
+#image {
+    width: 500px;
+    height: auto;
+    display: block;
+}
 
+#image-download {
+    color: #a9b1d6;
+    font-size: 16px;
+    display: block;
+}
+
+#image-download:hover {
+    color: #7aa2f7;
+}
+
+#image-download:visited {
+    color: #7dcfff;
+}
