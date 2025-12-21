@@ -1,0 +1,28 @@
+[Unit]
+Description=Qsld-Web backend service
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/qsld-web
+ExecStopPost=/usr/local/bin/qsld-web --cleanup
+Restart=no
+
+EnvironmentFile=/etc/qsld_web/qsld_web.env
+
+User=qsld
+Group=qsld
+SupplementaryGroups=docker
+
+NoNewPrivileges=true
+
+ReadWritePaths=
+PrivateTmp=false
+
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+
