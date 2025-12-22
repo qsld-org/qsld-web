@@ -138,6 +138,7 @@ void cleanup(string user_id) {
             users_docker_sockets.remove(user_id);
             user_sessions.remove(user_id);
             writeln(format("User with user_id: %s closed connection", user_id));
+            stdout.flush();
         } catch (Exception e) {
         }
     });
