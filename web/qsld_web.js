@@ -70,6 +70,39 @@
         }
     }
 
+    let run_enabled = true;
+    function idleTimer() {
+        var t;
+
+        //window.onload = resetTimer;
+        window.onmousemove = resetTimer; 
+        window.onmousedown = resetTimer; 
+        window.onclick = resetTimer;     
+        window.onscroll = resetTimer;    
+        window.onkeypress = resetTimer;  
+
+        function disconnect() {
+            run_enabled = false;
+            run_btn.style.color = "#2f2f2f";
+            alert("You have been inactive for too long, you have been disconected from the server");
+            code_socket.close();
+
+            window.onmousemove =
+            window.onmousedown =
+            window.onclick = 
+            window.onscroll = 
+            window.onkeypress = null;
+
+            clearTimeout(t);
+        }
+
+        function resetTimer() {
+            clearTimeout(t);
+            t = setTimeout(disconnect, 1800000);  
+        }
+    }
+    idleTimer();
+
     // sends the user id to the backend 
     var identification_json = identify_user();
     code_socket.addEventListener("open", function() {
@@ -77,13 +110,11 @@
     });
 
     // delays actions for some amount of time
-
     var editor = ace.edit("editor");
     document.getElementById("editor").style.fontSize='15px';
     editor.setTheme("ace/theme/tokyonight");
     editor.setKeyboardHandler("ace/keyboard/vim");
     editor.session.setMode("ace/mode/d");
-
 
     var debounced_save = debounce(save_content, 5000);
     
@@ -137,7 +168,6 @@
         run_btn.style.backgroundColor = "#1a1b26";
     });
 
-    let run_enabled = true;
     run_btn.addEventListener('click', function() {
         if (!run_enabled) {
             alert("The run button is not functional while the backend is disconnected, please reload the page to try and get a slot to execute code, please do not spam reload ;)");
