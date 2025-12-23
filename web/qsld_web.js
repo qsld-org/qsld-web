@@ -32,49 +32,6 @@
         return identification_json;
     }
 
-    // sends the user id to the backend 
-    var identification_json = identify_user();
-    code_socket.addEventListener("open", function() {
-        code_socket.send(identification_json);
-    });
-
-    // recieves and parses the messages from the backend
-    code_socket.addEventListener("message", async function(event) {
-        var output_box = document.getElementById("output-box");
-        const json_obj = JSON.parse(event.data);
-
-        if (json_obj.contentType === "output") {
-            output_box.innerHTML += json_obj.output;
-        } else if (json_obj.contentType === "message") {
-            output_box.innerHTML += json_obj.message;
-        } else if (json_obj.contentType === "images") {
-            const images = json_obj.images;
-            const user_id = localStorage.getItem("userId");
-            for (let i = 0; i < images.length; i++) {
-                var image_url = `http://${server}/artifact/${user_id}/${images[i]}`;
-                const resp = await fetch(image_url);
-                const blob = await resp.blob();
-                const blob_url = URL.createObjectURL(blob);
-
-                const image_elem = document.createElement("img");
-                image_elem.id = "image";
-                image_elem.src = blob_url;
-
-                const image_dl_elem = document.createElement("a");
-                image_dl_elem.id = "image-download";
-                image_dl_elem.href = blob_url;
-                image_dl_elem.download = images[i];
-                image_dl_elem.style.marginTop = "6px";
-                image_dl_elem.style.marginBottom = "6px";
-                image_dl_elem.textContent = "Download";
-
-                output_box.appendChild(image_elem);
-                output_box.appendChild(image_dl_elem);
-            }
-        }
-    });
-
-    // delays actions for some amount of time
     function debounce(func, delay) {
         let timeout; 
         return function (...args) {
@@ -85,15 +42,48 @@
         };
     }
 
+    function save_content() {
+        localStorage.setItem("editorContent", editor.getValue());
+    }
+
+    async function put_images_in_output_box(images, user_id) {
+        for (let i = 0; i < images.length; i++) {
+            var image_url = `http://${server}/artifact/${user_id}/${images[i]}`;
+            const resp = await fetch(image_url);
+            const blob = await resp.blob();
+            const blob_url = URL.createObjectURL(blob);
+
+            const image_elem = document.createElement("img");
+            image_elem.id = "image";
+            image_elem.src = blob_url;
+
+            const image_dl_elem = document.createElement("a");
+            image_dl_elem.id = "image-download";
+            image_dl_elem.href = blob_url;
+            image_dl_elem.download = images[i];
+            image_dl_elem.style.marginTop = "6px";
+            image_dl_elem.style.marginBottom = "6px";
+            image_dl_elem.textContent = "Download";
+
+            output_box.appendChild(image_elem);
+            output_box.appendChild(image_dl_elem);
+        }
+    }
+
+    // sends the user id to the backend 
+    var identification_json = identify_user();
+    code_socket.addEventListener("open", function() {
+        code_socket.send(identification_json);
+    });
+
+    // delays actions for some amount of time
+
     var editor = ace.edit("editor");
     document.getElementById("editor").style.fontSize='15px';
     editor.setTheme("ace/theme/tokyonight");
     editor.setKeyboardHandler("ace/keyboard/vim");
     editor.session.setMode("ace/mode/d");
 
-    function save_content() {
-        localStorage.setItem("editorContent", editor.getValue());
-    }
 
     var debounced_save = debounce(save_content, 5000);
     
@@ -147,9 +137,36 @@
         run_btn.style.backgroundColor = "#1a1b26";
     });
 
+    let run_enabled = true;
     run_btn.addEventListener('click', function() {
+        if (!run_enabled) {
+            alert("The run button is not functional while the backend is disconnected, please reload the page to try and get a slot to execute code, please do not spam reload ;)");
+            return;
+        }
         const request_json = JSON.stringify({ userId: localStorage.getItem("userId"), content: editor.getValue() });
         code_socket.send(request_json);
+    });
+
+    // recieves and parses the messages from the backend
+    code_socket.addEventListener("message", async function(event) {
+        var output_box = document.getElementById("output-box");
+        const json_obj = JSON.parse(event.data);
+
+        if (json_obj.contentType === "output") {
+            output_box.innerHTML += json_obj.output;
+        } else if (json_obj.contentType === "message") {
+            output_box.innerHTML += json_obj.message;
+        } else if (json_obj.contentType === "images") {
+            const images = json_obj.images;
+            const user_id = localStorage.getItem("userId");
+            put_images_in_output_box(images, user_id);
+        } else if (json_obj.contentType === "notification") {
+            if (json_obj.type === "busy") { 
+                run_enabled = false;
+                run_btn.style.color = "#2f2f2f";
+                alert(json_obj.notification);
+            }
+        }
     });
 
     var vim_mode_label = document.getElementById("vim-mode-label");

@@ -15,6 +15,7 @@ import std.array;
 import core.stdc.stdlib : exit;
 
 import std.file : write, exists, mkdir, isDir, remove, rmdirRecurse, read, getSize, dirEntries, SpanMode;
+import std.conv : to;
 
 import docker_sock;
 import lib;
@@ -56,11 +57,8 @@ void handleConn(scope WebSocket sock) {
 }
 
 void handleConn_impl(WebSocket sock, string user_id) {
-    if (!(user_id in user_sessions)) {
-        user_sessions[user_id] = UserSession(true, false);
-    }
-
-    create_user_tmp_dir(user_id);
+    admission_mutex = new TaskMutex;
+    admission_mutex.lock();
     if (user_id in cleanup_tasks) {
         cleanup_tasks[user_id].interrupt();
         cleanup_tasks.remove(user_id);
@@ -70,14 +68,40 @@ void handleConn_impl(WebSocket sock, string user_id) {
         users_docker_sockets[user_id] = docker_socket_connect();
     }
 
-    if (!(user_id in users_containers) || !docker_container_exists(
-            users_docker_sockets[user_id], users_containers[user_id])) {
-        users_containers[user_id] = docker_container_create(
-            users_docker_sockets[user_id], user_id);
+    string docker_container_limit = environment.get("QSLD_WEB_DOCKER_CONTAINER_LIMIT", "15");
+    int max_containers = to!int(docker_container_limit);
+
+    string[] docker_containers = docker_container_list_with_label(
+        users_docker_sockets[user_id], "managed_by=qsld_web");
+
+    if (docker_containers.length >= max_containers) {
+        string limit_msg = "Server is busy, you have been disconnected, please try again later";
+        string container_limit_msg = format(`
+        {
+            "contentType": "notification",
+            "type": "busy",
+            "notification": "%s" 
+        }
+        `, limit_msg);
+
+        sock.send(container_limit_msg);
+        users_docker_sockets.remove(user_id);
+        return;
     }
 
-    bool is_started = docker_container_is_started(
-        users_docker_sockets[user_id], users_containers[user_id]);
+    if (!(user_id in user_sessions)) {
+        user_sessions[user_id] = UserSession(true, false);
+    }
+
+    create_user_tmp_dir(user_id);
+
+    if (!(user_id in users_containers) || !docker_container_exists(
+            users_docker_sockets[user_id], users_containers[user_id])) {
+        users_containers[user_id] = docker_container_create(users_docker_sockets[user_id], user_id);
+    }
+    admission_mutex.unlock();
+
+    bool is_started = docker_container_is_started(users_docker_sockets[user_id], users_containers[user_id]);
     if (!is_started) {
         docker_container_start(users_docker_sockets[user_id], users_containers[user_id]);
     }
@@ -86,9 +110,9 @@ void handleConn_impl(WebSocket sock, string user_id) {
         // Recieve the users code
         auto msg = sock.receiveText();
         auto msg_copy = msg;
-        send_running_msg(sock);
         runTask({
             try {
+                send_running_msg(sock);
                 user_sessions[user_id].running = true;
 
                 string[] images = dirEntries(format("/tmp/qsld_web/%s", user_id), SpanMode.shallow, false)

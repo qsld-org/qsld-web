@@ -36,6 +36,9 @@ __gshared UserSession[string] user_sessions;
 // the origin of the frontend to allow it through CORS
 __gshared string frontend_origin;
 
+// mutex for admission into playground
+__gshared TaskMutex admission_mutex;
+
 void send_running_msg(WebSocket sock) {
     string system_output = prettify_output("Running...please wait");
     string system_output_json = format(`
