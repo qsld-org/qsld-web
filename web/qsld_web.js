@@ -177,6 +177,38 @@
         code_socket.send(request_json);
     });
 
+    var clear_btn = document.getElementById("clear-btn");
+    clear_btn.style.backgroundColor = "#7aa2f7";
+    clear_btn.style.color = "#1a1b26";
+    clear_btn.style.fontSize = "20px";
+    clear_btn.style.border = "none";
+    clear_btn.title = "clear code output";
+    clear_btn.style.marginTop = "15px";
+    clear_btn.style.borderRadius = "10px";
+    clear_btn.style.marginRight = "10px";
+    clear_btn.style.cursor = "pointer";
+
+    clear_btn.addEventListener('click', function() {
+        output_box.innerHTML = "";
+    });
+
+    var reset_btn = document.getElementById("reset-btn");
+    reset_btn.style.backgroundColor = "#f7768e";
+    reset_btn.style.color = "#1a1b26";    
+    reset_btn.style.fontSize = "20px";
+    reset_btn.style.border = "none";
+    reset_btn.title = "reset everything";
+    reset_btn.style.marginTop = "15px";
+    reset_btn.style.borderRadius = "10px";
+    reset_btn.style.marginRight = "10px";
+    reset_btn.style.cursor = "pointer";
+    
+    reset_btn.addEventListener('click', function() {
+        output_box.innerHTMl = "";
+        localStorage.removeItem("editorContent");
+        window.location.reload();
+    });
+
     // recieves and parses the messages from the backend
     code_socket.addEventListener("message", async function(event) {
         var output_box = document.getElementById("output-box");

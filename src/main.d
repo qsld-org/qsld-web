@@ -177,8 +177,7 @@ void serve() {
 
 void cleanup_cmd() {
     Socket docker_socket = docker_socket_connect();
-    string[] container_ids = docker_container_list_with_label(
-        docker_socket, "managed_by=qsld_web");
+    string[] container_ids = docker_container_list_with_label(docker_socket, "managed_by=qsld_web");
     if (container_ids.length == 0) {
         writeln("No containers to cleanup!");
         exit(0);

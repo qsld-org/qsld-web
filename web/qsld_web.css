@@ -18,6 +18,19 @@ body {
     color: #7aa2f7;
 }
 
-#image-download:visited {
-    color: #7dcfff;
+#clear-btn {
+    float: right;
 }
+
+#reset-btn {
+    float: right;
+}
+
+#clear-btn:hover {
+    background-color: #b1c8fa;
+}
+
+#reset-btn:hover {
+    background-color: #fab1be;
+}
+
