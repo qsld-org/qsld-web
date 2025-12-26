@@ -141,13 +141,13 @@ $ sudo systemctl daemon-reload
 In order to configure sane defaults for the backend service you must add environment variables to a file which systemd will use to feed to the backend code. The file should be located at `/etc/qsld_web/qsld_web.env`, if it dpes not exist than you should create it:
 
 ```console
-sudo mkdir -p /etc/qsld_web
+$ sudo mkdir -p /etc/qsld_web
 ```
 
 and then create the file
 
 ```console
-sudo touch /etc/qsld_web/qsld_web.env
+$ sudo touch /etc/qsld_web/qsld_web.env
 ```
 
 The environment variables you can put in the file are as follows:
